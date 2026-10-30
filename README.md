@@ -1,41 +1,71 @@
-# NexusOps — 零食电商客服 Agent MVP
+# NexusOps
 
-## 运行
+> 面向业务人员的可编排式 Agent 工作台，用于搭建、调试、观测工具调用型客服 Agent。
+> 本项目为产品原型验证，我负责全部产品设计、交互、UI，配套前端实现来跑通完整流程。
 
-```bash
-npm install
-cp .env.example .env.local
-npm run dev
-```
+## 目标
 
-打开 `http://localhost:3000`。必须在 `.env.local` 填写 OpenAI 或兼容 API 配置，5 个 Skill 始终调用真实模型；未配置或调用失败时会直接返回错误，不生成模拟结果。
+传统对话机器人大多是固定问答流程，很难处理需要多步信息查询、多工具组合的用户请求。
 
-## 数据与规则
+NexusOps 提供可视化配置能力：无需编写复杂代码，即可定义 Agent 的思考逻辑、原子能力与外部工具，同时完整展示每一步执行过程，便于调试、评估与迭代。
 
-- `skills/<skill-name>/SKILL.md`：标准 Skill 触发描述与执行指令
-- `skills/<skill-name>/agents/openai.yaml`：Skill 的 UI metadata
-- `data/skills.json`：模型参数与启用状态，不再保存 Prompt
-- `data/planner.json`：Planner Prompt、模型参数与强制执行规则
-- `data/tools.json`：后台可编辑的 Tool 名称、描述与启用状态
-- `data/mcp-servers.json`：远程 MCP Server 配置（只保存 Token 环境变量名，不保存密钥）
-- `data/products.json`、`activities.json`、`coupons.json`：本地模拟数据
-- 商品过滤、活动和优惠券匹配、价格计算均在 `lib/engine.ts` 中用代码执行
-- Planner 只从已启用 Skill 和 Tool 组装计划
-- `$risk-check` 是最终强制步骤，停用后前台会拒绝生成未经审核的回复
-- Skill 配置中心支持查看原始 `SKILL.md`，以及创建可被 Planner 动态选择的新标准 Skill
-- 新增 Skill 支持 AI Create Skill 模式：自然语言描述能力、生成标准草稿、人工确认后落盘
-- Planner 管理中心支持编辑规划 Prompt、必经 Skill、规则 Tool，并调用真实模型预览 Plan JSON
-- 配置保存自动生成版本快照，可在运营中心回滚
-- 评测中心支持真实 Agent 用例运行、关键词检查、风控与延迟评分
-- Agent 执行页支持多轮会话、步骤自动重试与人工接管
-- Skill 支持 Input/Output JSON Schema，执行前后自动校验
-- Planner 支持可视化排序必经 Skill
-- Prompt A/B 实验按流量选择变体，并记录到运行指标
-- 数据中心可视化管理商品、活动与优惠券
-- 运行监控统计成功率、耗时、失败步骤与人工接管率
+## 核心模块说明
 
-## MCP 模式
+### Agent 工作台
 
-在「Tool 管理」中填写 MCP Server 的 Streamable HTTP URL，点击“连接并导入”。平台会通过 `tools/list` 发现工具并加入 `available_tools`；Planner 按用户问题选择需要的 MCP Tool，Executor 根据 `inputSchema` 生成参数并通过 `tools/call` 执行，参数和结果都会写入 `execution_trace`。
+调试入口。输入用户问题，触发 Planner 生成执行计划，展示完整执行轨迹 Trace，将 Agent 的每一步动作可视化、可复核。
 
-如服务需要 Bearer Token，只在 `.env.local` 保存 Token，并在管理页填写对应环境变量名（例如 `MCP_API_TOKEN`）。MVP 不在页面中保存明文 Token，也不开放 stdio 命令执行。
+### Demo 对话窗口
+
+面向终端用户的客服对话界面，模拟电商售前售后咨询，底层复用同一套 Planner、Skill、Tool 链路。
+
+### Planner 管理中心
+
+定义 Agent 的执行策略：
+
+- 设置系统提示词、模型参数
+- 编排 Skill 的执行顺序，配置必填能力
+- 测试并预览 Planner 输出的执行计划
+
+### Skill 配置中心
+
+将业务能力拆分为独立、可复用的 Skill。
+
+每个 Skill 支持单独编写指令、配置输入输出 Schema、独立测试。
+
+示例能力：需求结构化、商品推荐决策、话术生成、风控审核、售后分类、人工转接判断等。
+
+### Tool 管理中心
+
+统一管理 Agent 可调用的工具，包含本地模拟工具和远程 MCP 服务：
+
+- 本地工具：商品查询、活动查询、优惠券、价格计算、订单物流、售后政策
+- 支持通过 Streamable HTTP 接入外部 MCP 服务
+- 配置能力描述与安全边界，管控工具调用范围
+
+### 运营与质量中心
+
+沉淀 Agent 每一次运行记录，统计核心指标：成功率、平均耗时、人工接管比例。
+
+支持查看历史执行记录，用于效果复盘、Prompt 和 Skill 调优。
+
+### 商品与营销数据
+
+维护模拟数据源：商品、活动、优惠券。数据在此录入修改后，可直接被 Tool 读取使用。
+
+## 设计思路
+
+1. **分层隔离**：Planner（规划）、Skill（原子推理能力）、Tool（外部查询能力）职责解耦，可独立修改、独立调试。
+2. **全链路可追溯**：所有调用留存 Trace，消除大模型黑盒问题，方便定位规划、Skill 输出或工具返回数据中的问题。
+3. **风控内嵌**：风控审核作为后置 Skill，在回复给到用户前完成校验，不符合规则的请求流转至人工接管。
+4. **面向配置者**：目标用户为运营、业务配置人员，降低搭建 Agent 的门槛，不依赖算法开发。
+
+## 项目边界（MVP）
+
+- 仅用于产品方案和流程验证，非线上生产系统
+- 内置数据为模拟零食电商数据
+- 暂不包含正式权限体系、多租户、高并发、密钥托管等生产级能力
+
+## 技术简要
+
+前端原型，基于 Next.js + TypeScript 实现，对接 MCP Streamable HTTP 规范，验证这套 Agent 编排产品的交互与业务流程。
